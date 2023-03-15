@@ -1,0 +1,484 @@
+---
+title: "Missing Data Techniques"
+output: html_notebook
+---
+```{r setup, include=FALSE}
+# library
+library("readr")
+library("rstanarm")
+library("ggplot2")
+library("bayesplot")
+library("mice")
+library("dplyr")
+library(VIM)
+library(mi)
+```
+## For this assignment I am using the Motor Vehicle Collision – Crashes on NYC Open Data. I downloaded it from this url: [https://data.cityofnewyork.us/Public-Safety/Motor- Vehicle-Collisions-Crashes/h9gi-nx95] filtering for data collected between 01/01/2021 through 02/01/2022. I plan to conduct linear regression on the data. With, “number of persons injured”, as the dependent variable and using the borough as the independent variable.
+
+```{r}
+# loading in motor vehicle dataset
+vehicle_df <-  read_csv("Desktop/ASSR/Missing Data/Motor_Vehicle_Collisions_-_Crashes.csv", 
+    col_types = cols(LOCATION = col_skip(), 
+        `CONTRIBUTING FACTOR VEHICLE 1` = col_skip(),
+        `CONTRIBUTING FACTOR VEHICLE 2` = col_skip(),
+        `CONTRIBUTING FACTOR VEHICLE 3` = col_skip(), 
+        `CONTRIBUTING FACTOR VEHICLE 4` = col_skip(), 
+        `CONTRIBUTING FACTOR VEHICLE 5` = col_skip(), 
+        `CROSS STREET NAME` = col_skip(),
+        `OFF STREET NAME` = col_skip(),
+        `VEHICLE TYPE CODE 1` = col_skip(), 
+        `VEHICLE TYPE CODE 2` = col_skip(),
+        `VEHICLE TYPE CODE 3` = col_skip(),
+        `VEHICLE TYPE CODE 4` = col_skip(), 
+        `VEHICLE TYPE CODE 5` = col_skip()))
+head(vehicle_df)
+# saving modified df for tableau summary statistics
+# write.csv(vehicle_df,"~/Desktop/ASSR/Missing Data/vehicle_df.csv", row.names = FALSE)
+```
+
+# 1. Provide some plots and summary statistics, like percent missing per variable, percent complete cases, and so on.
+```{r}
+ # Check % missing for 
+n = nrow(vehicle_df)
+sum(is.na(vehicle_df))/n
+```
+
+```{r}
+# table of missing data by column
+colMeans(apply(vehicle_df, 2, is.na))
+```
+```{r}
+# counting the number of missing values for each column
+colSums(is.na(vehicle_df))
+```
+
+# After each of the following tasks, you need to implement the analysis you have in mind and report the results/estimates.
+-------------------------------------------------------------------------------------------
+# 2. Listwise deletion
+```{r}
+# performing listwise deletion to get rid of cases with missing categorical variables.
+sum(is.na(vehicle_df)) # checking how many na values are there prior to listwise deletion
+likewise_deletion_vehicle_df <- na.omit(vehicle_df) # preforming listwise deletion
+sum(is.na(likewise_deletion_vehicle_df)) # checking how many na values are there after listwise deletion
+```
+```{r}
+# displaying the full dataset after removing all possible na values
+View(likewise_deletion_vehicle_df)
+```
+```{r}
+# conducting linear regression on the likewise deletion data, with, “number of persons injured”, as the dependent variable and using "borough" as the independent variable.
+fit2 <- lm(data = likewise_deletion_vehicle_df, `NUMBER OF PERSONS INJURED` ~ BOROUGH)
+summary(fit2)
+```
+```{r}
+#histogram of residuals
+ggplot(data = likewise_deletion_vehicle_df, aes(x = fit2$residuals)) +
+    geom_histogram(bins = 20, fill = 'orange', color = 'black') +
+    labs(title = 'Likewise Deletion Residuals', x = 'Residuals', y = 'Frequency', caption = "Source: Vehicle Collision Data") +
+  theme_classic() +
+  theme(plot.title = element_text(color = "black", size = 12, hjust = 0.5 ), plot.caption = element_text(face = "italic"))
+
+```
+
+
+-------------------------------------------------------------------------------------------
+# 3. Mean/mode imputation.
+## Mean Imputation on quantitative variables:
+```{r}
+# creating a function to take the mean of a column based on the example from class
+mean.imputation <- function(a) {
+  missing <- is.na(a)
+  a.obs <- a[!missing]
+  imputed <- a
+  imputed[missing] <- mean(a.obs)
+  return (imputed)
+}
+
+# creating a new dataframe to store the modifications
+mean_mode_vehicle_df <- vehicle_df
+
+# Preforming mean imputation on, "ZIP CODE" variable
+mean_mode_vehicle_df$`ZIP CODE` <- mean.imputation(mean_mode_vehicle_df$`ZIP CODE`)
+sum(is.na(mean_mode_vehicle_df$`ZIP CODE`))
+
+# Preforming mean imputation on, "NUMBER OF PERSONS INJURED" variable
+mean_mode_vehicle_df$`NUMBER OF PERSONS INJURED` <- mean.imputation(mean_mode_vehicle_df$`NUMBER OF PERSONS INJURED`)
+sum(is.na(mean_mode_vehicle_df$`NUMBER OF PERSONS INJURED`))
+
+# Preforming mean imputation on, "LATITUDE" variable
+mean_mode_vehicle_df$LATITUDE <- mean.imputation(mean_mode_vehicle_df$LATITUDE)
+sum(is.na(mean_mode_vehicle_df$LATITUDE))
+
+# Preforming mean imputation on, "LONGITUDE" variable
+mean_mode_vehicle_df$LONGITUDE <- mean.imputation(mean_mode_vehicle_df$LONGITUDE)
+sum(is.na(mean_mode_vehicle_df$LONGITUDE))
+```
+
+# 2. performing mode imputation on categorical variables
+## The categorical variables, "on street name", "contributing factor vehicle 1", "contributing factor vehicle 2", "vehicle type code 1", "vehicle type code 2", "borough have na values.
+```{r}
+# creating a function that finds the mode of a variable and then replaces the missing data with that mode
+mode = function(x) {
+ta = table(x)
+tam = max(ta)
+if (all(ta == tam))
+  mod = NA else
+    mod = names(ta)[ta == tam] 
+return(mod)
+}
+
+mode.imp <- function (a) {
+missing <- is.na(a)
+a.obs <- a[!missing]
+imputed <- a
+imputed[missing] <- mode(a.obs) 
+return(imputed)
+}
+
+# Preforming mode imputation on, "BOROUGH" variable
+mean_mode_vehicle_df$BOROUGH <- mode.imp(mean_mode_vehicle_df$BOROUGH)
+sum(is.na(mean_mode_vehicle_df$BOROUGH))
+
+# Preforming mode imputation on, "ON STREET NAME" variable
+mean_mode_vehicle_df$`ON STREET NAME`<- mode.imp(mean_mode_vehicle_df$`ON STREET NAME`)
+sum(is.na(mean_mode_vehicle_df$`ON STREET NAME`))
+```
+```{r}
+# checking that all missing values have been replaced with either mean or mode imputation
+sum(is.na(mean_mode_vehicle_df))
+```
+
+```{r}
+# mean mode data analysis
+
+head(mean_mode_vehicle_df)
+# conducting linear regression on the modified data, with, “number of persons injured”, as the dependent variable and using "borough" as the independent variable.
+fit3 <- lm(data = mean_mode_vehicle_df, `NUMBER OF PERSONS INJURED` ~ BOROUGH)
+summary(fit3)
+```
+```{r}
+#histogram of residuals
+ggplot(data = mean_mode_vehicle_df, aes(x = fit3$residuals)) +
+    geom_histogram(bins = 20, fill = 'orange', color = 'black') +
+    labs(title = 'Mean and Mode Imputation Residuals', x = 'Residuals', y = 'Frequency', caption = "Source: Vehicle Collision Data") +
+  theme_classic() +
+  theme(plot.title = element_text(color = "black", size = 12, hjust = 0.5 ), plot.caption = element_text(face = "italic"))
+
+```
+
+-------------------------------------------------------------------------------------------
+# 4. Random imputation.
+```{r}
+# creating dataframe with only quantitative variables for regression imputation
+quant_df <- data.frame('ZIP CODE' = vehicle_df$`ZIP CODE`,'LATITUDE' = vehicle_df$LATITUDE, 'NUMBER OF PERSONS INJURED' = vehicle_df$`NUMBER OF PERSONS INJURED`, 'NUMBER OF PERSONS KILLED' = vehicle_df$`NUMBER OF PERSONS KILLED`,'NUMBER OF PEDESTRIANS INJURED' = vehicle_df$`NUMBER OF PEDESTRIANS INJURED`, 'NUMBER OF PEDESTRIANS KILLED' = vehicle_df$`NUMBER OF PEDESTRIANS KILLED`, 'NUMBER OF CYCLIST INJURED' = vehicle_df$`NUMBER OF CYCLIST INJURED`, 'NUMBER OF CYCLIST KILLED' = vehicle_df$`NUMBER OF CYCLIST KILLED`, 'NUMBER OF MOTORIST INJURED' = vehicle_df$`NUMBER OF MOTORIST INJURED`,  'NUMBER OF MOTORIST KILLED' = vehicle_df$`NUMBER OF MOTORIST KILLED`)
+head(quant_df)
+```
+
+```{r}
+# checking to see how many na values in the quant df
+sum(is.na(quant_df$ZIP.CODE))
+sum(is.na(quant_df$LATITUDE))
+sum(is.na(quant_df$NUMBER.OF.PERSONS.INJURED))
+sum(is.na(quant_df$NUMBER.OF.PEDESTRIANS.KILLED))
+sum(is.na(quant_df$NUMBER.OF.CYCLIST.INJURED))
+sum(is.na(quant_df$NUMBER.OF.CYCLIST.KILLED))
+sum(is.na(quant_df$NUMBER.OF.MOTORIST.INJURED))
+sum(is.na(quant_df$NUMBER.OF.MOTORIST.KILLED))
+```
+
+```{r}
+# random imputation on the quantitative variables 
+random_imp_vehicle_df.complete = complete(mice(quant_df, method = "sample", m = 1, maxit = 1))
+```
+```{r}
+# checking the number of na values in the new df
+sum(is.na(random_imp_vehicle_df.complete$ZIP.CODE))
+sum(is.na(random_imp_vehicle_df.complete$LATITUDE))
+sum(is.na(random_imp_vehicle_df.complete$NUMBER.OF.PERSONS.INJURED))
+sum(is.na(random_imp_vehicle_df.complete$NUMBER.OF.PERSONS.KILLED))
+sum(is.na(random_imp_vehicle_df.complete$NUMBER.OF.PEDESTRIANS.INJURED))
+sum(is.na(random_imp_vehicle_df.complete$NUMBER.OF.PEDESTRIANS.KILLED))
+sum(is.na(random_imp_vehicle_df.complete$NUMBER.OF.CYCLIST.INJURED))
+sum(is.na(random_imp_vehicle_df.complete$NUMBER.OF.CYCLIST.KILLED))
+sum(is.na(random_imp_vehicle_df.complete$NUMBER.OF.MOTORIST.INJURED))
+sum(is.na(random_imp_vehicle_df.complete$NUMBER.OF.MOTORIST.KILLED))
+```
+
+```{r}
+# replacing the columns with missing values as part of the regular dataframe
+random_imp_vehicle_df <- vehicle_df
+random_imp_vehicle_df$'ZIP CODE' <- random_imp_vehicle_df.complete$ZIP.CODE
+random_imp_vehicle_df$LATITUDE <- random_imp_vehicle_df.complete$LATITUDE
+random_imp_vehicle_df$`NUMBER OF PERSONS INJURED` <- random_imp_vehicle_df.complete$NUMBER.OF.PERSONS.INJURED
+random_imp_vehicle_df$`NUMBER OF PEDESTRIANS KILLED` <- random_imp_vehicle_df.complete$NUMBER.OF.PERSONS.KILLED
+random_imp_vehicle_df$`NUMBER OF CYCLIST INJURED` <- random_imp_vehicle_df.complete$NUMBER.OF.CYCLIST.INJURED
+random_imp_vehicle_df$`NUMBER OF CYCLIST KILLED` <- random_imp_vehicle_df.complete$NUMBER.OF.CYCLIST.KILLED
+random_imp_vehicle_df$`NUMBER OF MOTORIST INJURED` <- random_imp_vehicle_df.complete$NUMBER.OF.MOTORIST.INJURED
+random_imp_vehicle_df$`NUMBER OF MOTORIST KILLED` <- random_imp_vehicle_df.complete$NUMBER.OF.MOTORIST.KILLED
+```
+
+
+```{r}
+# regression data analysis
+head(random_imp_vehicle_df)
+# conducting linear regression on the modified data, with, “number of persons injured”, as the dependent variable and using "borough" as the independent variable.
+fit6 <- lm(data = random_imp_vehicle_df, `NUMBER OF PERSONS INJURED` ~ BOROUGH)
+summary(fit6)
+```
+-------------------------------------------------------------------------------------------
+# 5. Cannot use LVCF method because the data is not longitudial data.
+-------------------------------------------------------------------------------------------
+#6. Hotdecking (nearest neighbor) with VIM package.
+```{r}
+# Nearest neighbor hotdecking
+hotdeck_vehicle_df <- vehicle_df
+sum(is.na(hotdeck_vehicle_df))
+
+# Using Manhattan distance and variance as weight to rescale variables:
+hotdeck_vehicle_df <- hotdeck(data = hotdeck_vehicle_df, 
+        variable = c("BOROUGH", "LATITUDE", "ZIP CODE", "LONGITUDE", "ON STREET NAME", "NUMBER OF PERSONS INJURED"),
+        domain_var = "CRASH TIME")
+sum(is.na(hotdeck_vehicle_df))
+```
+```{r}
+fit6.5 <- lm(data = hotdeck_vehicle_df, `NUMBER OF PERSONS INJURED` ~ BOROUGH)
+summary(fit6.5)
+```
+```{r}
+#histogram of residuals
+ggplot(data = hotdeck_vehicle_df, aes(x = fit6.5$residuals)) +
+    geom_histogram(bins = 20, fill = 'orange', color = 'black') +
+    labs(title = 'Hotdeck Residuals', x = 'Residuals', y = 'Frequency', caption = "Source: Vehicle Collision Data") +
+  theme_classic() +
+  theme(plot.title = element_text(color = "black", size = 12, hjust = 0.5 ), plot.caption = element_text(face = "italic"))
+```
+
+-------------------------------------------------------------------------------------------
+#7. Regression imputation. (Note you might have to use logistic or multinomial models, depending on what type of variable you impute values for.)
+```{r}
+# checking if their are na values in the new dataset prior to imputation
+sum(is.na(quant_df$ZIP.CODE))
+sum(is.na(quant_df$LATITUDE))
+sum(is.na(quant_df$NUMBER.OF.PERSONS.INJURED))
+sum(is.na(quant_df$NUMBER.OF.PEDESTRIANS.KILLED))
+sum(is.na(quant_df$NUMBER.OF.CYCLIST.INJURED))
+sum(is.na(quant_df$NUMBER.OF.CYCLIST.KILLED))
+sum(is.na(quant_df$NUMBER.OF.MOTORIST.INJURED))
+sum(is.na(quant_df$NUMBER.OF.MOTORIST.KILLED))
+```
+```{r}
+# Preforming regression imputation on, the quantitative variables
+imp <- mice(quant_df, method = "norm.predict", m = 1)
+data_imp <- complete(imp)
+head(data_imp)
+```
+
+```{r}
+sum(is.na(data_imp$ZIP.CODE))
+sum(is.na(data_imp$LATITUDE))
+sum(is.na(data_imp$NUMBER.OF.PERSONS.INJURED))
+sum(is.na(data_imp$NUMBER.OF.PERSONS.KILLED))
+sum(is.na(data_imp$NUMBER.OF.PEDESTRIANS.INJURED))
+sum(is.na(data_imp$NUMBER.OF.PEDESTRIANS.KILLED))
+sum(is.na(data_imp$NUMBER.OF.CYCLIST.INJURED))
+sum(is.na(data_imp$NUMBER.OF.CYCLIST.KILLED))
+sum(is.na(data_imp$NUMBER.OF.MOTORIST.INJURED))
+sum(is.na(data_imp$NUMBER.OF.MOTORIST.KILLED))
+```
+```{r}
+# making the column with missing values a part of the regular dataframe
+regression_df <- vehicle_df
+regression_df$'ZIP CODE' <- data_imp$ZIP.CODE
+regression_df$LATITUDE <- data_imp$LATITUDE
+regression_df$`NUMBER OF PERSONS INJURED` <- data_imp$NUMBER.OF.PERSONS.INJURED
+regression_df$`NUMBER OF PEDESTRIANS KILLED` <- data_imp$NUMBER.OF.PERSONS.KILLED
+regression_df$`NUMBER OF CYCLIST INJURED` <- data_imp$NUMBER.OF.CYCLIST.INJURED
+regression_df$`NUMBER OF CYCLIST KILLED` <- data_imp$NUMBER.OF.CYCLIST.KILLED
+regression_df$`NUMBER OF MOTORIST INJURED` <- data_imp$NUMBER.OF.MOTORIST.INJURED
+regression_df$`NUMBER OF MOTORIST KILLED` <- data_imp$NUMBER.OF.MOTORIST.KILLED
+
+sum(is.na(regression_df$'ZIP CODE'))
+sum(is.na(regression_df$LATITUDE))
+sum(is.na(regression_df$`NUMBER OF PERSONS INJURED`))
+sum(is.na(regression_df$`NUMBER OF PEDESTRIANS KILLED`))
+sum(is.na(regression_df$`NUMBER OF CYCLIST INJURED`))
+sum(is.na(regression_df$`NUMBER OF CYCLIST KILLED`))
+sum(is.na(regression_df$`NUMBER OF MOTORIST INJURED`))
+sum(is.na(regression_df$`NUMBER OF MOTORIST KILLED`))
+
+head(regression_df)
+```
+
+```{r}
+# regression data analysis
+head(regression_df)
+# conducting linear regression on the modified data, with, “number of persons injured”, as the dependent variable and using "borough" as the independent variable.
+fit7 <- lm(data = regression_df, `NUMBER OF PERSONS INJURED` ~ BOROUGH)
+summary(fit7)
+```
+```{r}
+#histogram of residuals
+ggplot(data = regression_df, aes(x = fit7$residuals)) +
+    geom_histogram(bins = 20, fill = 'orange', color = 'black') +
+    labs(title = 'Regression Imputation Residuals', x = 'Residuals', y = 'Frequency', caption = "Source: Vehicle Collision Data") +
+  theme_classic() +
+  theme(plot.title = element_text(color = "black", size = 12, hjust = 0.5 ), plot.caption = element_text(face = "italic"))
+```
+-------------------------------------------------------------------------------------------
+# 8. Regression imputation with noise on all variables (numerical, dichotomous and multinomial).
+```{r}
+# using the quantitative variable subset of the dataframe
+# checking to see how many na values in the quant df
+sum(is.na(quant_df$ZIP.CODE))
+sum(is.na(quant_df$LATITUDE))
+sum(is.na(quant_df$NUMBER.OF.PERSONS.INJURED))
+sum(is.na(quant_df$NUMBER.OF.PEDESTRIANS.KILLED))
+sum(is.na(quant_df$NUMBER.OF.CYCLIST.INJURED))
+sum(is.na(quant_df$NUMBER.OF.CYCLIST.KILLED))
+sum(is.na(quant_df$NUMBER.OF.MOTORIST.INJURED))
+sum(is.na(quant_df$NUMBER.OF.MOTORIST.KILLED))
+```
+```{r}
+# Preforming regression imputation on, the quantitative variables using norm.nob to add noise based on the data
+imp2 <- mice(quant_df, method = "norm.nob", m = 1) # creating noise
+data_imp2 <- complete(imp2)
+head(data_imp2)
+```
+```{r}
+sum(is.na(data_imp2$ZIP.CODE))
+sum(is.na(data_imp2$LATITUDE))
+sum(is.na(data_imp2$NUMBER.OF.PERSONS.INJURED))
+sum(is.na(data_imp2$NUMBER.OF.PERSONS.KILLED))
+sum(is.na(data_imp2$NUMBER.OF.PEDESTRIANS.INJURED))
+sum(is.na(data_imp2$NUMBER.OF.PEDESTRIANS.KILLED))
+sum(is.na(data_imp2$NUMBER.OF.CYCLIST.INJURED))
+sum(is.na(data_imp2$NUMBER.OF.CYCLIST.KILLED))
+sum(is.na(data_imp2$NUMBER.OF.MOTORIST.INJURED))
+sum(is.na(data_imp2$NUMBER.OF.MOTORIST.KILLED))
+```
+```{r}
+# making the column with missing values a part of the regular dataframe
+regression_df2 <- vehicle_df
+regression_df2$'ZIP CODE' <- data_imp2$ZIP.CODE
+regression_df2$LATITUDE <- data_imp2$LATITUDE
+regression_df2$`NUMBER OF PERSONS INJURED` <- data_imp2$NUMBER.OF.PERSONS.INJURED
+regression_df2$`NUMBER OF PEDESTRIANS KILLED` <- data_imp2$NUMBER.OF.PERSONS.KILLED
+regression_df2$`NUMBER OF CYCLIST INJURED` <- data_imp2$NUMBER.OF.CYCLIST.INJURED
+regression_df2$`NUMBER OF CYCLIST KILLED` <- data_imp2$NUMBER.OF.CYCLIST.KILLED
+regression_df2$`NUMBER OF MOTORIST INJURED` <- data_imp2$NUMBER.OF.MOTORIST.INJURED
+regression_df2$`NUMBER OF MOTORIST KILLED` <- data_imp2$NUMBER.OF.MOTORIST.KILLED
+
+sum(is.na(regression_df2$'ZIP CODE'))
+sum(is.na(regression_df2$LATITUDE))
+sum(is.na(regression_df2$`NUMBER OF PERSONS INJURED`))
+sum(is.na(regression_df2$`NUMBER OF PEDESTRIANS KILLED`))
+sum(is.na(regression_df2$`NUMBER OF CYCLIST INJURED`))
+sum(is.na(regression_df2$`NUMBER OF CYCLIST KILLED`))
+sum(is.na(regression_df2$`NUMBER OF MOTORIST INJURED`))
+sum(is.na(regression_df2$`NUMBER OF MOTORIST KILLED`))
+
+head(regression_df2)
+```
+```{r}
+# regression data analysis
+head(regression_df2)
+# conducting linear regression on the modified data, with, “number of persons injured”, as the dependent variable and using "borough" as the independent variable.
+fit8 <- lm(data = regression_df2, `NUMBER OF PERSONS INJURED` ~ BOROUGH)
+summary(fit8)
+```
+
+# There are no dichotomous variables in my dataset so I am unable to preform logistic regression on the data.
+
+-------------------------------------------------------------------------------------------
+# Multiple imputation with either mice OR mi package:
+
+#9. Load your data into the package. Obtain summary, and graphs of the data and missing patterns.
+```{r}
+#creating a new dataframe with only the columns of interest because of errors running whenever I attempt to load the original data to a 'mdf' as long as errors with the iterations
+vehicle <- vehicle_df[, c("BOROUGH", "NUMBER OF PERSONS INJURED", "NUMBER OF PERSONS KILLED")]
+vehicle
+```
+```{r}
+vehicle <- rename(vehicle, num_injured = `NUMBER OF PERSONS INJURED`, num_killed = `NUMBER OF PERSONS KILLED`)
+```
+```{r}
+vehicle <- as.data.frame(vehicle) #converting from tibble to dataframe for mdf conversion
+head(vehicle)
+```
+
+```{r}
+# loading data into the package
+mdf <- missing_data.frame(vehicle)
+```
+
+```{r}
+# Obtaining summary of the data
+summary(mdf)
+```
+```{r}
+# creating this in order to display graph without errors
+mdf2 <- missing_data.frame(vehicle[1:500,])
+```
+
+```{r}
+# obtains graphs of the data
+image(mdf2)
+```
+```{r}
+# missingness patterns
+md.pattern(mdf2)
+```
+
+#10. Check your data types and methods and make changes if necessary.
+```{r}
+show(mdf)
+```
+
+#11. Run the mi/mice command and check convergence by traceplots.
+```{r}
+#mi with 5 chains and 50 iterations
+imp.vehicle <- mi(mdf, seed = 124, n.chains = 5, n.iter = 50)
+```
+```{r}
+# check convergence
+converged <- mi2BUGS(imp.vehicle)
+plot(imp.vehicle)
+```
+
+```{r}
+# changing the imputation method to Predictive mean matching
+mdf <- change(mdf, y = c("BOROUGH", "num_injured","num_killed"), what = "imputation_method", to = "pmm")
+```
+
+```{r}
+# rerunning mi with 5 chains and 50 iterations
+imp.vehicle <- mi(mdf, seed = 124, n.chains = 5, n.iter = 50)
+```
+
+```{r}
+# checking rhats
+mi(imp.vehicle)
+```
+
+```{r}
+# checking convergence
+converged <- mi2BUGS(imp.vehicle)
+plot(imp.vehicle)
+```
+
+```{r}
+#pool data
+res.imp.vehicle = mi::pool(num_injured ~ BOROUGH, data = imp.vehicle)
+display(res.imp.vehicle)
+```
+```{r}
+vehicle.comp1 = complete(imp.vehicle, m=1)
+vehicle.comp1to5 = complete(imp.vehicle, m=5)
+```
+```{r}
+lapply(vehicle.comp1to5, summary)
+```
+```{r}
+vehicle_plots <- as.data.frame(vehicle.comp1to5) 
+head(vehicle_plots)
+```
